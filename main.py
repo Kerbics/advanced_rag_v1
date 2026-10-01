@@ -57,6 +57,19 @@ if COLLECTION_NAME not in existing_collections:
         vectors_config=VectorParams(size=EMBEDDING_DIM, distance=Distance.COSINE),
     )
 
+# Qdrant Cloud requires an explicit payload index on any field you filter by —
+# it does not scan unindexed fields. Without this, the dedup check in
+# /add-documents fails with "Index required but not found for metadata.doc_hash".
+# Creating it is idempotent: safe to call every startup even if it already exists.
+try:
+    qdrant_client.create_payload_index(
+        collection_name=COLLECTION_NAME,
+        field_name="metadata.doc_hash",
+        field_schema="keyword",
+    )
+except Exception as index_error:
+    print(f"[payload index setup] {index_error}")
+
 # Create vector store
 vector_store = Qdrant(
     client=qdrant_client,
@@ -416,6 +429,11 @@ async def clear_documents():
         qdrant_client.create_collection(
             collection_name=COLLECTION_NAME,
             vectors_config=VectorParams(size=EMBEDDING_DIM, distance=Distance.COSINE)
+        )
+        qdrant_client.create_payload_index(
+            collection_name=COLLECTION_NAME,
+            field_name="metadata.doc_hash",
+            field_schema="keyword",
         )
         return {"status": "cleared"}
     except Exception as e:
