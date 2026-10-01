@@ -314,19 +314,25 @@ async def add_documents(doc: DocumentInput):
     try:
         doc_hash = hashlib.sha256(doc.content.encode("utf-8")).hexdigest()
 
-        existing = qdrant_client.scroll(
-            collection_name=COLLECTION_NAME,
-            scroll_filter=Filter(
-                must=[FieldCondition(key="metadata.doc_hash", match=MatchValue(value=doc_hash))]
-            ),
-            limit=1
-        )
-        if existing[0]:
-            return {
-                "status": "skipped",
-                "reason": "identical content already indexed",
-                "chunks_added": 0
-            }
+        # Dedup check is fail-safe: if the scroll() call itself errors for any
+        # reason (indexing, auth, transient API issue), we log it and proceed
+        # with adding the document rather than blocking ingestion entirely.
+        try:
+            existing = qdrant_client.scroll(
+                collection_name=COLLECTION_NAME,
+                scroll_filter=Filter(
+                    must=[FieldCondition(key="metadata.doc_hash", match=MatchValue(value=doc_hash))]
+                ),
+                limit=1
+            )
+            if existing[0]:
+                return {
+                    "status": "skipped",
+                    "reason": "identical content already indexed",
+                    "chunks_added": 0
+                }
+        except Exception as dedup_error:
+            print(f"[dedup check failed, proceeding with add] {dedup_error}")
 
         # Split text into chunks
         # chunk_size/chunk_overlap are CHARACTER counts, not tokens

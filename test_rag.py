@@ -112,7 +112,15 @@ def add_documents():
                 }
             )
             result = response.json()
-            print(f"  ✅ {doc['title']}: {result['chunks_added']} chunks added")
+
+            if response.status_code != 200:
+                print(f"  ❌ {doc['title']} — server returned {response.status_code}: {result.get('detail', result)}")
+                continue
+
+            if result.get("status") == "skipped":
+                print(f"  ⏭️  {doc['title']}: skipped ({result.get('reason')})")
+            else:
+                print(f"  ✅ {doc['title']}: {result['chunks_added']} chunks added")
         except Exception as e:
             print(f"  ❌ Error adding {doc['title']}: {e}")
     print()
